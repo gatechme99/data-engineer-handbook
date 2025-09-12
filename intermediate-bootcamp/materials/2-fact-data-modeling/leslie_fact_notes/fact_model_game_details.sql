@@ -1,4 +1,4 @@
--- DDL for fct_game_details.
+-- DDL for fct_game_details table.
 CREATE TABLE fct_game_details(
     dim_game_date DATE,
     dim_season INTEGER,
