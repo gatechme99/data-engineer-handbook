@@ -66,6 +66,12 @@ placeholder_ints AS (
 
 SELECT
     user_id,
-    CAST(CAST(SUM(placeholder_int_value) AS BIGINT) AS BIT(32))
+    CAST(CAST(SUM(placeholder_int_value) AS BIGINT) AS BIT(32)),
+    BIT_COUNT(CAST(CAST(SUM(placeholder_int_value) AS BIGINT) AS BIT(32))) > 0 AS dim_is_monthly_active,
+    -- bitwise AND (&)
+    BIT_COUNT(CAST('11111110000000000000000000000000' AS BIT(32)) &
+        CAST(CAST(SUM(placeholder_int_value) AS BIGINT) AS BIT(32))) > 0 AS dim_is_weekly_active,
+    BIT_COUNT(CAST('10000000000000000000000000000000' AS BIT(32)) &
+        CAST(CAST(SUM(placeholder_int_value) AS BIGINT) AS BIT(32))) > 0 AS dim_is_daily_active
 FROM placeholder_ints
 GROUP BY user_id
