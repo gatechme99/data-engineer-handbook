@@ -38,15 +38,52 @@ WHERE row_num = 1;
 
 -- DDL for an user_devices_cumulated table.
 CREATE TABLE user_devices_cumulated (
-    device_id NUMBERIC,
+    user_id NUMERIC,
+    device_id NUMERIC,
+    browser_type TEXT,
+    event_time TEXT,
     -- The list of dates in the past where the user was active.
-    dates_active DATE[],
-    -- The current date the user.
+    device_activity_datelist JSONB,
+    -- The current date.
     date DATE,
-    PRIMARY KEY (user_id, date)
+    PRIMARY KEY (user_id, device_id, date)
 );
 
 -- Cumulative query to generate device_activity_datelist from events.
+WITH deduped AS (
+	SELECT
+		e.user_id,
+        e.device_id,
+        e.event_time,
+        d.browser_type,
+		ROW_NUMBER() OVER (PARTITION BY e.user_id, e.device_id) as row_num
+	FROM events e 
+    JOIN devices d ON e.device_id = d.device_id
+),
+
+yesterday AS (
+    SELECT *
+    FROM user_devices_cumulated
+    WHERE date = DATE('2022-12-31')
+),
+
+today AS (
+    SELECT
+	    user_id,
+        device_id,
+        DATE(CAST(event_time AS TIMESTAMP)) as date_active
+    FROM deduped
+    WHERE row_num = 1
+	    AND DATE(CAST(event_time AS TIMESTAMP)) = DATE('2023-01-01')
+	    AND user_id IS NOT NULL
+    GROUP BY user_id, device_id, DATE(CAST(event_time AS TIMESTAMP))
+)
+
+SELECT *
+FROM today t
+FULL OUTER JOIN yesterday y
+    ON t.user_id = y.user_id
+    AND t.device_id = y.device_id
 
 
 -- A datelist_int generation query that converts the 
