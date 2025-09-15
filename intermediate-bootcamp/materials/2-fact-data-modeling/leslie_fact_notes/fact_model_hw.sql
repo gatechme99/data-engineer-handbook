@@ -40,17 +40,16 @@ WHERE row_num = 1;
 CREATE TABLE user_devices_cumulated (
     user_id TEXT,
     device_id TEXT,
-    -- browser_type TEXT,
-    -- event_time TEXT,
+    browser_type TEXT,
     -- Object to track user active days by browser_type.
-    device_activity_datelist JSON,
+    device_activity_datelist DATE[],
     -- The current date.
     date DATE,
     PRIMARY KEY (user_id, device_id, date)
 );
 
 -- Cumulative query to generate device_activity_datelist from events.
-INSERT INTO user_devices_cumulated
+-- INSERT INTO user_devices_cumulated
 WITH deduped AS (
 	SELECT
 		e.user_id,
@@ -65,7 +64,7 @@ WITH deduped AS (
 yesterday AS (
     SELECT *
     FROM user_devices_cumulated
-    WHERE date = DATE('2023-01-16')
+    WHERE date = DATE('2022-12-31')
 ),
 
 today AS (
@@ -76,7 +75,7 @@ today AS (
         DATE(CAST(event_time AS TIMESTAMP)) as date_active
     FROM deduped
     WHERE row_num = 1
-	    AND DATE(CAST(event_time AS TIMESTAMP)) = DATE('2023-01-17')
+	    AND DATE(CAST(event_time AS TIMESTAMP)) = DATE('2023-01-01')
 	    AND user_id IS NOT NULL
     GROUP BY user_id, device_id, browser_type, DATE(CAST(event_time AS TIMESTAMP))
 )
@@ -84,33 +83,40 @@ today AS (
 SELECT
     COALESCE(t.user_id, y.user_id) AS user_id,
     COALESCE(t.device_id, y.device_id) AS device_id,
+    COALESCE(t.browser_type, y.browser_type) AS browser_type,
     CASE
-        WHEN y.device_activity_datelist IS NULL THEN 
-			jsonb_build_object(t.browser_type, ARRAY[t.date_active])
-        WHEN t.date_active IS NULL THEN y.device_activity_datelist::jsonb
-		WHEN y.device_activity_datelist IS NOT NULL 
-			AND y.device_activity_datelist::jsonb ? t.browser_type THEN
-                jsonb_set(
-                    y.device_activity_datelist::jsonb,
-                    ARRAY[t.browser_type],
-                    to_jsonb((y.device_activity_datelist -> t.browser_type)::jsonb || to_jsonb(t.date_active))
-                )
-		WHEN y.device_activity_datelist IS NOT NULL 
-			AND NOT(y.device_activity_datelist::jsonb ? t.browser_type) 
-			THEN y.device_activity_datelist::jsonb || jsonb_build_object(ARRAY[t.browser_type], ARRAY[t.date_active])
+        WHEN y.device_activity_datelist IS NULL THEN ARRAY[t.date_active]
+        WHEN t.date_active IS NULL THEN y.device_activity_datelist
+		ELSE ARRAY[t.date_active] || y.device_activity_datelist
     END AS device_activity_datelist,
     COALESCE(t.date_active, y.date + INTERVAL '1 day') AS date
 FROM today t
 FULL OUTER JOIN yesterday y
     ON t.user_id = y.user_id
-    AND t.device_id = y.device_id
--- ON CONFLICT(user_id, device_id, date)
--- DO
---     UPDATE SET device_activity_datelist = EXCLUDED.device_activity_datelist;
+    AND t.device_id = y.device_id;
 
 
 -- A datelist_int generation query that converts the 
 -- device_activity_datelist column into a datelist_int column.
+WITH users AS (
+    SELECT * FROM user_devices_cumulated
+    WHERE date = DATE('2023-01-31')
+),
+
+series AS (
+    SELECT * 
+    FROM generate_series(DATE('2023-01-01'), DATE('2023-01-31'), INTERVAL '1 day') AS series_date
+)
+
+SELECT 
+    CASE 
+        WHEN device_activity_datelist @> ARRAY [DATE(series_date)]
+        THEN CAST(POW(2, 32 - (date - DATE(series_date))) AS BIGINT)
+        ELSE 0
+    END AS datelist_int, 
+    *
+FROM users 
+CROSS JOIN series;
 
 
 -- DDL for hosts_cumulated table.
@@ -120,7 +126,11 @@ FULL OUTER JOIN yesterday y
 
 
 -- Monthly, reduced fact table DDL host_activity_reduced.
-
+CREATE TABLE host_activity_reduced (
+    host TEXT
+    month_start DATE,
+    PRIMARY KEY (host, month_start)
+)
 
 -- Incremental query that loads host_activity_reduced.
 
