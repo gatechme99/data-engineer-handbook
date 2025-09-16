@@ -71,6 +71,6 @@ SELECT
     "TO" as m_turnovers,
     pf AS m_pf,
     pts AS m_pts,
-   plus_minus AS m_plus_minus
+    plus_minus AS m_plus_minus
 FROM deduped
 WHERE row_num = 1;
